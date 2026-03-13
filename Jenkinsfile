@@ -1,5 +1,9 @@
 pipeline {
     agent any
+    
+    triggers {
+        githubPush()
+    }
 
     environment {
         DOCKER_REGISTRY = 'docker.io'
@@ -23,16 +27,34 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
+        stage("Git Checkout") {
             steps {
-                script {
-                    echo "Checking out code from repository..."
-                    checkout scm
-                    sh 'git rev-parse HEAD'
+                git branch: 'main',
+                    credentialsId: 'git-cred',
+                    url: 'https://github.com/trahulprabhu38/nexus-AgenticAI'
+            }
+        }
+        stage("SonarQube Analysis") {
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    sh """
+                    sonar-scanner \
+                        -Dsonar.projectKey=${SONAR_PROJECT} \
+                        -Dsonar.projectName="${SONAR_PROJECT}" \
+                        -Dsonar.sources=app \
+                        -Dsonar.language=py \
+                        -Dsonar.python.version=3
+                    """
                 }
             }
         }
-
+        stage("Quality Gate") {
+            steps {
+                timeout(time: 3, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
         stage('Environment Setup') {
             steps {
                 script {
